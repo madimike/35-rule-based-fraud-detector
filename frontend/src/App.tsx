@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useState, type FormEvent } from "react";
 import "./App.css";
 
 const navigationItems = [
@@ -58,6 +59,38 @@ interface DashboardData {
 
 type ConnectionStatus = "checking" | "connected" | "disconnected";
 
+interface TransactionForm {
+  transaction_id: string;
+  customer_id: string;
+  amount: string;
+  currency: string;
+  timestamp: string;
+  merchant_category: string;
+  channel: "card" | "online" | "transfer";
+  device_id: string;
+  country_code: string;
+}
+
+function createInitialTransactionForm(): TransactionForm {
+  const localTimestamp = new Date();
+  localTimestamp.setMinutes(
+    localTimestamp.getMinutes() - localTimestamp.getTimezoneOffset(),
+  );
+
+  return {
+    transaction_id: "",
+    customer_id: "",
+    amount: "",
+    currency: "NGN",
+    timestamp: localTimestamp.toISOString().slice(0, 16),
+    merchant_category: "",
+    channel: "online",
+    device_id: "",
+    country_code: "NG",
+  };
+}
+
+
 const emptyDashboardData: DashboardData = {
   transactions: [],
   assessments: [],
@@ -94,10 +127,29 @@ function App() {
   const [transactionSearch, setTransactionSearch] = useState("");
   const [riskBandFilter, setRiskBandFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
+  const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [transactionForm, setTransactionForm] =
+    useState<TransactionForm>(createInitialTransactionForm);
+  const [transactionActionError, setTransactionActionError] =
+    useState<string | null>(null);
+  const [transactionActionMessage, setTransactionActionMessage] =
+    useState<string | null>(null);
+  const [savingTransaction, setSavingTransaction] = useState(false);
+  const [evaluatingTransactionId, setEvaluatingTransactionId] =
+    useState<string | null>(null);
+  const [creatingCaseForTransactionId, setCreatingCaseForTransactionId] =
+    useState<string | null>(null);
+  const [caseNotesDrafts, setCaseNotesDrafts] =
+    useState<Record<number, string>>({});
+  const [savingCaseNotesId, setSavingCaseNotesId] = useState<number | null>(
+    null,
+  );
+  const [caseActionMessage, setCaseActionMessage] = useState<string | null>(
+    null,
+  );
 
   async function loadDashboardData(showLoading = true) {
-    // Keep the loading indicator visible long enough to be noticed, even when
-    // the local API responds very quickly.
+    // Keep the loading indicator visible long enough to be noticed.
     const loadingStartedAt = Date.now();
     const minimumLoadingDurationMs = 500;
 
@@ -113,11 +165,11 @@ function App() {
         assessmentsResponse,
         casesResponse,
       ] = await Promise.all([
-        fetch("/api/health"),
-        fetch("/api/transactions?limit=1000"),
-        fetch("/api/assessments?limit=1000"),
-        // No status filter: load open, in-review, and closed cases.
-        fetch("/api/cases?limit=1000"),
+        fetch("/health"),
+        fetch("/transactions?limit=1000"),
+        fetch("/assessments?limit=1000"),
+        // Load open, in-review, and closed cases.
+        fetch("/cases?limit=1000"),
       ]);
 
       if (!healthResponse.ok) {
@@ -179,7 +231,7 @@ function App() {
     setCaseUpdateError(null);
 
     try {
-      const response = await fetch(`/api/cases/${caseId}`, {
+      const response = await fetch(`/cases/${caseId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -202,6 +254,178 @@ function App() {
       );
     } finally {
       setUpdatingCaseId(null);
+    }
+  }
+
+  async function submitTransaction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTransactionActionError(null);
+    setTransactionActionMessage(null);
+
+    const amount = Number(transactionForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setTransactionActionError("Enter an amount greater than zero.");
+      return;
+    }
+
+    setSavingTransaction(true);
+    try {
+      const timestamp = new Date(transactionForm.timestamp);
+      if (Number.isNaN(timestamp.getTime())) {
+        throw new Error("Enter a valid transaction date and time.");
+      }
+
+      const payload = {
+        transaction_id: transactionForm.transaction_id.trim(),
+        customer_id: transactionForm.customer_id.trim(),
+        amount: transactionForm.amount,
+        currency: transactionForm.currency.trim().toUpperCase(),
+        timestamp: timestamp.toISOString(),
+        merchant_category: transactionForm.merchant_category.trim(),
+        channel: transactionForm.channel,
+        device_id: transactionForm.device_id.trim() || null,
+        country_code: transactionForm.country_code.trim().toUpperCase() || null,
+      };
+
+      const response = await fetch("/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(
+          errorBody || `Transaction creation failed (${response.status}).`,
+        );
+      }
+
+      const result = await response.json();
+      await loadDashboardData();
+      setTransactionForm(createInitialTransactionForm());
+      setShowTransactionForm(false);
+      setTransactionActionMessage(
+        result.created === false
+          ? "This transaction already exists. The existing record was retained."
+          : "Transaction added successfully.",
+      );
+    } catch (error) {
+      setTransactionActionError(
+        error instanceof Error ? error.message : "Could not save the transaction.",
+      );
+    } finally {
+      setSavingTransaction(false);
+    }
+  }
+
+  async function evaluateTransaction(transactionId: string) {
+    setTransactionActionError(null);
+    setTransactionActionMessage(null);
+    setEvaluatingTransactionId(transactionId);
+
+    try {
+      const response = await fetch(
+        `/transactions/${encodeURIComponent(transactionId)}/evaluate`,
+        { method: "POST" },
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(errorBody || `Evaluation failed (${response.status}).`);
+      }
+
+      await loadDashboardData();
+      setTransactionActionMessage(
+        `Transaction ${transactionId} evaluated successfully.`,
+      );
+    } catch (error) {
+      setTransactionActionError(
+        error instanceof Error ? error.message : "Evaluation failed.",
+      );
+    } finally {
+      setEvaluatingTransactionId(null);
+    }
+  }
+
+  async function createInvestigationCase(transactionId: string) {
+    setTransactionActionError(null);
+    setTransactionActionMessage(null);
+    setCreatingCaseForTransactionId(transactionId);
+
+    try {
+      const assessment = dashboardData.assessments.find(
+        (item) => item.transaction_id === transactionId,
+      );
+
+      if (!assessment) {
+        throw new Error("Evaluate this transaction before creating a case.");
+      }
+
+      const response = await fetch("/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transaction_id: transactionId,
+          assessment_id: assessment.assessment_id,
+          notes: "Investigation opened from the FraudGuard dashboard.",
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(errorBody || `Case creation failed (${response.status}).`);
+      }
+
+      await loadDashboardData();
+      setCaseActionMessage(
+        `Investigation case created for ${transactionId}.`,
+      );
+      setActivePage("Cases");
+    } catch (error) {
+      setTransactionActionError(
+        error instanceof Error ? error.message : "Case creation failed.",
+      );
+    } finally {
+      setCreatingCaseForTransactionId(null);
+    }
+  }
+
+  async function saveCaseNotes(caseId: number) {
+    const fraudCase = dashboardData.cases.find(
+      (item) => item.case_id === caseId,
+    );
+    if (!fraudCase) return;
+
+    const notes = caseNotesDrafts[caseId] ?? fraudCase.notes;
+    setCaseUpdateError(null);
+    setCaseActionMessage(null);
+    setSavingCaseNotesId(caseId);
+
+    try {
+      const response = await fetch(`/cases/${caseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(errorBody || `Could not update notes for case #${caseId}.`);
+      }
+
+      await loadDashboardData();
+      setCaseNotesDrafts((current) => {
+        const next = { ...current };
+        delete next[caseId];
+        return next;
+      });
+      setCaseActionMessage(`Notes saved for case #${caseId}.`);
+    } catch (error) {
+      setCaseUpdateError(
+        error instanceof Error ? error.message : "Could not save case notes.",
+      );
+    } finally {
+      setSavingCaseNotesId(null);
     }
   }
 
@@ -478,6 +702,210 @@ function App() {
                 </span>
               </div>
 
+              <div className="transaction-actions-toolbar">
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => {
+                    setShowTransactionForm((visible) => !visible);
+                    setTransactionActionError(null);
+                    setTransactionActionMessage(null);
+                  }}
+                >
+                  {showTransactionForm ? "Cancel" : "+ Add transaction"}
+                </button>
+              </div>
+
+              {transactionActionError && (
+                <p className="action-feedback error-feedback" role="alert">
+                  {transactionActionError}
+                </p>
+              )}
+              {transactionActionMessage && (
+                <p className="action-feedback success-feedback" role="status">
+                  {transactionActionMessage}
+                </p>
+              )}
+
+              {showTransactionForm && (
+                <form className="transaction-form" onSubmit={submitTransaction}>
+                  <div className="form-heading">
+                    <h3>Add a transaction</h3>
+                    <p>Fields marked required must be completed.</p>
+                  </div>
+
+                  <div className="transaction-form-grid">
+                    <label className="form-field">
+                      <span>Transaction ID *</span>
+                      <input
+                        required
+                        maxLength={100}
+                        pattern="[A-Za-z0-9][A-Za-z0-9_.:-]*"
+                        value={transactionForm.transaction_id}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            transaction_id: event.target.value,
+                          }))
+                        }
+                        placeholder="TXN-1001"
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Customer ID *</span>
+                      <input
+                        required
+                        maxLength={100}
+                        pattern="[A-Za-z0-9][A-Za-z0-9_.:-]*"
+                        value={transactionForm.customer_id}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            customer_id: event.target.value,
+                          }))
+                        }
+                        placeholder="CUST-1001"
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Amount *</span>
+                      <input
+                        required
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={transactionForm.amount}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            amount: event.target.value,
+                          }))
+                        }
+                        placeholder="85000.00"
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Currency *</span>
+                      <input
+                        required
+                        minLength={3}
+                        maxLength={3}
+                        pattern="[A-Za-z]{3}"
+                        value={transactionForm.currency}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            currency: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Date and time *</span>
+                      <input
+                        required
+                        type="datetime-local"
+                        value={transactionForm.timestamp}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            timestamp: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Merchant category *</span>
+                      <input
+                        required
+                        maxLength={80}
+                        value={transactionForm.merchant_category}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            merchant_category: event.target.value,
+                          }))
+                        }
+                        placeholder="electronics"
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Channel *</span>
+                      <select
+                        value={transactionForm.channel}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            channel: event.target.value as TransactionForm["channel"],
+                          }))
+                        }
+                      >
+                        <option value="card">Card</option>
+                        <option value="online">Online</option>
+                        <option value="transfer">Transfer</option>
+                      </select>
+                    </label>
+
+                    <label className="form-field">
+                      <span>Device ID</span>
+                      <input
+                        maxLength={100}
+                        pattern="[A-Za-z0-9][A-Za-z0-9_.:-]*"
+                        value={transactionForm.device_id}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            device_id: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional"
+                      />
+                    </label>
+
+                    <label className="form-field">
+                      <span>Country code</span>
+                      <input
+                        minLength={2}
+                        maxLength={2}
+                        pattern="[A-Za-z]{2}"
+                        value={transactionForm.country_code}
+                        onChange={(event) =>
+                          setTransactionForm((current) => ({
+                            ...current,
+                            country_code: event.target.value,
+                          }))
+                        }
+                        placeholder="NG"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="form-actions">
+                    <button
+                      className="primary-button"
+                      type="submit"
+                      disabled={savingTransaction}
+                    >
+                      {savingTransaction ? "Saving..." : "Save transaction"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={savingTransaction}
+                      onClick={() => setShowTransactionForm(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
               <div
                 className="transaction-filters"
                 aria-label="Filter transactions"
@@ -574,6 +1002,7 @@ function App() {
                         <th>Channel</th>
                         <th>Country</th>
                         <th>Timestamp</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
 
@@ -614,6 +1043,53 @@ function App() {
                             </td>
                             <td>{transaction.country_code ?? "—"}</td>
                             <td>{formatDate(transaction.timestamp)}</td>
+                            <td>
+                              <div className="row-action-buttons">
+                                <button
+                                  className="secondary-button compact-button"
+                                  type="button"
+                                  disabled={
+                                    evaluatingTransactionId === transaction.transaction_id
+                                  }
+                                  onClick={() =>
+                                    void evaluateTransaction(transaction.transaction_id)
+                                  }
+                                >
+                                  {evaluatingTransactionId === transaction.transaction_id
+                                    ? "Evaluating..."
+                                    : assessment
+                                      ? "Re-evaluate"
+                                      : "Evaluate"}
+                                </button>
+                                {assessment && (
+                                  dashboardData.cases.some(
+                                    (item) =>
+                                      item.transaction_id === transaction.transaction_id,
+                                  ) ? (
+                                    <span className="existing-case-label">Case exists</span>
+                                  ) : (
+                                    <button
+                                      className="primary-button compact-button"
+                                      type="button"
+                                      disabled={
+                                        creatingCaseForTransactionId ===
+                                        transaction.transaction_id
+                                      }
+                                      onClick={() =>
+                                        void createInvestigationCase(
+                                          transaction.transaction_id,
+                                        )
+                                      }
+                                    >
+                                      {creatingCaseForTransactionId ===
+                                      transaction.transaction_id
+                                        ? "Creating..."
+                                        : "Create case"}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -753,6 +1229,11 @@ function App() {
                   Case status could not be updated: {caseUpdateError}
                 </p>
               )}
+              {caseActionMessage && (
+                <p className="action-feedback success-feedback" role="status">
+                  {caseActionMessage}
+                </p>
+              )}
 
               {isLoading ? (
                 <p className="empty-state">Loading cases...</p>
@@ -812,10 +1293,40 @@ function App() {
                           )}
                         </div>
 
-                        <p className="case-notes">
-                          {fraudCase.notes ||
-                            "No investigation notes provided."}
-                        </p>
+                        <div className="case-notes-editor">
+                          <label className="form-field">
+                            <span>Investigation notes</span>
+                            <textarea
+                              rows={3}
+                              maxLength={5000}
+                              value={
+                                caseNotesDrafts[fraudCase.case_id] ??
+                                fraudCase.notes
+                              }
+                              onChange={(event) =>
+                                setCaseNotesDrafts((current) => ({
+                                  ...current,
+                                  [fraudCase.case_id]: event.target.value,
+                                }))
+                              }
+                              placeholder="Add investigation findings or next steps..."
+                            />
+                          </label>
+                          <button
+                            className="secondary-button compact-button"
+                            type="button"
+                            disabled={
+                              savingCaseNotesId === fraudCase.case_id ||
+                              (caseNotesDrafts[fraudCase.case_id] ??
+                                fraudCase.notes) === fraudCase.notes
+                            }
+                            onClick={() => void saveCaseNotes(fraudCase.case_id)}
+                          >
+                            {savingCaseNotesId === fraudCase.case_id
+                              ? "Saving notes..."
+                              : "Save notes"}
+                          </button>
+                        </div>
 
                         <div className="case-timestamps">
                           <span>
@@ -829,7 +1340,7 @@ function App() {
 
                         {updatingCaseId === fraudCase.case_id && (
                           <p className="case-update-message" role="status">
-                            Saving status...
+                            Saving case status...
                           </p>
                         )}
                       </article>

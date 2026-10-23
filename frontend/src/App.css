@@ -1265,3 +1265,376 @@
     animation-duration: 2s;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Transaction and investigation actions
+   Append this section to the end of frontend/src/App.css.
+   It intentionally supplements the existing dashboard theme.
+   -------------------------------------------------------------------------- */
+
+.transaction-actions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 1.25rem 0;
+}
+
+.transaction-form {
+  margin: 1.25rem 0 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+  border-radius: 16px;
+  background: var(--panel-subtle, rgba(15, 23, 42, 0.45));
+}
+
+.form-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.form-heading h3,
+.form-heading h2 {
+  margin: 0;
+  color: var(--text-primary, #f1f5f9);
+  font-size: 1.05rem;
+}
+
+.form-heading p {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.transaction-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.form-field > span,
+.form-field > label {
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea,
+.case-notes-editor {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 9px;
+  background: var(--input-background, #0f172a);
+  color: var(--text-primary, #e2e8f0);
+  font: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus,
+.case-notes-editor:focus {
+  border-color: var(--accent-color, #60a5fa);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.14);
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder,
+.case-notes-editor::placeholder {
+  color: var(--text-muted, #64748b);
+}
+
+.form-field input:disabled,
+.form-field select:disabled,
+.form-field textarea:disabled,
+.case-notes-editor:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.form-field small {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+
+.primary-button,
+.secondary-button,
+.clear-filters-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 40px;
+  padding: 0.65rem 0.95rem;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease,
+    transform 150ms ease, opacity 150ms ease;
+}
+
+.primary-button {
+  border: 1px solid var(--accent-color, #3b82f6);
+  background: var(--accent-color, #3b82f6);
+  color: #fff;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--accent-hover, #2563eb);
+  border-color: var(--accent-hover, #2563eb);
+  transform: translateY(-1px);
+}
+
+.secondary-button,
+.clear-filters-button {
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.28));
+  background: var(--button-background, rgba(30, 41, 59, 0.72));
+  color: var(--text-primary, #e2e8f0);
+}
+
+.secondary-button:hover:not(:disabled),
+.clear-filters-button:hover:not(:disabled) {
+  border-color: var(--accent-color, #60a5fa);
+  background: var(--button-hover, rgba(51, 65, 85, 0.9));
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.clear-filters-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 0.48rem 0.7rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.row-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 190px;
+}
+
+.row-action-buttons .primary-button,
+.row-action-buttons .secondary-button {
+  min-height: 32px;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.76rem;
+}
+
+.action-feedback,
+.error-feedback,
+.success-feedback {
+  padding: 0.8rem 0.95rem;
+  border-radius: 10px;
+  margin: 0.85rem 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.action-feedback {
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  background: rgba(59, 130, 246, 0.09);
+  color: var(--text-primary, #dbeafe);
+}
+
+.success-feedback {
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: #a7f3d0;
+}
+
+.error-feedback {
+  border: 1px solid rgba(248, 113, 113, 0.32);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fecaca;
+}
+
+.existing-case-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.78rem;
+}
+
+.case-notes-editor {
+  display: block;
+  min-height: 92px;
+  margin-top: 0.85rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.case-notes-editor + .form-actions {
+  margin-top: 0.65rem;
+}
+
+.case-item .case-notes {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.case-item .case-heading {
+  align-items: flex-start;
+}
+
+.case-item .case-heading label {
+  flex-shrink: 0;
+}
+
+.case-status-select:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.case-update-message {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.8rem;
+  margin: 0.6rem 0 0;
+}
+
+.data-table td:last-child,
+.data-table th:last-child {
+  min-width: 190px;
+}
+
+.data-table td {
+  vertical-align: middle;
+}
+
+.data-table .risk-badge,
+.data-table .channel-badge {
+  white-space: nowrap;
+}
+
+@media (max-width: 1000px) {
+  .transaction-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .row-action-buttons {
+    min-width: 160px;
+  }
+}
+
+@media (max-width: 640px) {
+  .transaction-form {
+    padding: 1rem;
+  }
+
+  .transaction-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-actions-toolbar,
+  .form-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transaction-actions-toolbar > button,
+  .form-actions > button {
+    width: 100%;
+  }
+
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .row-action-buttons {
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .row-action-buttons .primary-button,
+  .row-action-buttons .secondary-button {
+    width: 100%;
+  }
+
+  .case-item .case-heading {
+    flex-direction: column;
+  }
+
+  .case-item .case-heading label,
+  .case-status-select {
+    width: 100%;
+  }
+}
+
+/* Transactions table: responsive layout without clipped columns */
+.transactions-table-container,
+.transaction-table-container,
+.table-container {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.transactions-table-container::-webkit-scrollbar,
+.transaction-table-container::-webkit-scrollbar,
+.table-container::-webkit-scrollbar {
+  display: none;
+}
+
+.transactions-table,
+.transaction-table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.transactions-table th,
+.transactions-table td,
+.transaction-table th,
+.transaction-table td {
+  padding: 14px 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}

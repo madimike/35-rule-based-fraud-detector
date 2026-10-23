@@ -85,6 +85,65 @@ def test_protected_endpoint_accepts_valid_api_key(tmp_path):
     assert response.status_code == 200
 
 
+def test_demo_mode_allows_requests_without_api_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRAUD_DEMO_MODE", "true")
+    client = TestClient(create_app(tmp_path / "demo-test.sqlite3"))
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_oversized_request_body_returns_413(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRAUD_DEMO_MODE", "true")
+    client = TestClient(create_app(tmp_path / "body-limit-test.sqlite3"))
+
+    response = client.post(
+        "/transactions",
+        content=b"x" * 65_537,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == (
+        "Request body too large. Maximum size is 65536 bytes."
+    )
+
+
+def test_request_body_at_limit_is_not_rejected_by_size_middleware(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("FRAUD_DEMO_MODE", "true")
+    client = TestClient(create_app(tmp_path / "body-limit-boundary.sqlite3"))
+
+    response = client.post(
+        "/transactions",
+        content=b"x" * 65_536,
+        headers={"Content-Type": "application/json"},
+    )
+
+    # The payload is invalid JSON for a transaction, but its size alone
+    # should not cause a 413 response.
+    assert response.status_code != 413
+
+
+def test_demo_mode_rate_limit_returns_429(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRAUD_DEMO_MODE", "true")
+    client = TestClient(create_app(tmp_path / "rate-limit-test.sqlite3"))
+
+    limiter = client.app.state.rate_limiter
+    limiter.allow = lambda client_id, category, limit: False
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == (
+        "Rate limit exceeded. Please try again shortly."
+    )
+    assert response.headers["Retry-After"] == "60"
+
+
 def test_protected_endpoint_fails_when_api_key_is_not_configured(
     tmp_path, monkeypatch
 ):

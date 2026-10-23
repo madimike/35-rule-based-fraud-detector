@@ -1,0 +1,14 @@
+
+services:
+  - type: web
+    name: fraudguard-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: FRAUD_DEMO_MODE
+        value: "true"
+      - key: FRAUD_DATABASE_PATH
+        value: /tmp/fraud_detector.sqlite3
