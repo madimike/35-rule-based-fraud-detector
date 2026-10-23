@@ -5,12 +5,14 @@ Run locally with: uvicorn app.main:app --reload
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Response, status
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.transaction import Transaction
@@ -67,6 +69,35 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _authenticate_request(request: Request, call_next):
+    """Require an API key for every endpoint except the health check."""
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    expected_key = os.getenv("FRAUD_API_KEY")
+
+    if not expected_key:
+        return Response(
+            content='{"detail":"API authentication is not configured"}',
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            media_type="application/json",
+        )
+
+    provided_key = request.headers.get("X-API-Key")
+
+    if not provided_key or not secrets.compare_digest(
+        provided_key, expected_key
+    ):
+        return Response(
+            content='{"detail":"Invalid or missing API key"}',
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            media_type="application/json",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+
+    return await call_next(request)
+
+
 def create_app(database_path: str | Path | None = None) -> FastAPI:
     """Create an app instance; tests can provide a temporary SQLite file."""
     db_path = database_path or "data/fraud_detector.sqlite3"
@@ -83,6 +114,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             "rule-weight totals, not calibrated probabilities of fraud."
         ),
     )
+    api.middleware("http")(_authenticate_request)
+
     api.state.database = database
     api.state.repository = repository
     api.state.rule_engine = engine

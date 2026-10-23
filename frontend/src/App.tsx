@@ -1,109 +1,109 @@
-import { useEffect, useState } from 'react'
-import './App.css'
+import { useEffect, useState } from "react";
+import "./App.css";
 
 const navigationItems = [
-  { label: 'Overview', icon: '▦' },
-  { label: 'Transactions', icon: '⇄' },
-  { label: 'Assessments', icon: '◈' },
-  { label: 'Cases', icon: '▤' },
-]
+  { label: "Overview", icon: "▦" },
+  { label: "Transactions", icon: "⇄" },
+  { label: "Assessments", icon: "◈" },
+  { label: "Cases", icon: "▤" },
+];
 
 interface Transaction {
-  transaction_id: string
-  customer_id: string
-  amount: string
-  currency: string
-  timestamp: string
-  merchant_category: string
-  channel: 'card' | 'online' | 'transfer'
-  device_id?: string | null
-  country_code?: string | null
-  created_at?: string
+  transaction_id: string;
+  customer_id: string;
+  amount: string;
+  currency: string;
+  timestamp: string;
+  merchant_category: string;
+  channel: "card" | "online" | "transfer";
+  device_id?: string | null;
+  country_code?: string | null;
+  created_at?: string;
 }
 
 interface RuleResult {
-  rule_id: string
-  name: string
-  status: string
-  score: number
-  explanation: string
+  rule_id: string;
+  name: string;
+  status: string;
+  score: number;
+  explanation: string;
 }
 
 interface Assessment {
-  assessment_id: number
-  transaction_id: string
-  risk_score: number
-  risk_band: string
-  created_at: string
-  rule_results: RuleResult[]
+  assessment_id: number;
+  transaction_id: string;
+  risk_score: number;
+  risk_band: string;
+  created_at: string;
+  rule_results: RuleResult[];
 }
 
-type CaseStatus = 'open' | 'in_review' | 'closed'
+type CaseStatus = "open" | "in_review" | "closed";
 
 interface FraudCase {
-  case_id: number
-  transaction_id: string
-  assessment_id: number
-  status: CaseStatus
-  notes: string
-  created_at: string
-  updated_at: string
+  case_id: number;
+  transaction_id: string;
+  assessment_id: number;
+  status: CaseStatus;
+  notes: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface DashboardData {
-  transactions: Transaction[]
-  assessments: Assessment[]
-  cases: FraudCase[]
+  transactions: Transaction[];
+  assessments: Assessment[];
+  cases: FraudCase[];
 }
 
-type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
+type ConnectionStatus = "checking" | "connected" | "disconnected";
 
 const emptyDashboardData: DashboardData = {
   transactions: [],
   assessments: [],
   cases: [],
-}
+};
 
 function formatDate(value: string): string {
-  const date = new Date(value)
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return value
+    return value;
   }
 
-  return date.toLocaleString()
+  return date.toLocaleString();
 }
 
 function formatRiskBand(value: string): string {
-  if (!value) return 'Unknown'
+  if (!value) return "Unknown";
 
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 function App() {
-  const [activePage, setActivePage] = useState('Overview')
+  const [activePage, setActivePage] = useState("Overview");
 
   const [dashboardData, setDashboardData] =
-    useState<DashboardData>(emptyDashboardData)
+    useState<DashboardData>(emptyDashboardData);
   const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>('checking')
-  const [isLoading, setIsLoading] = useState(true)
-  const [apiError, setApiError] = useState<string | null>(null)
-  const [caseUpdateError, setCaseUpdateError] = useState<string | null>(null)
-  const [updatingCaseId, setUpdatingCaseId] = useState<number | null>(null)
-  const [transactionSearch, setTransactionSearch] = useState('')
-  const [riskBandFilter, setRiskBandFilter] = useState('all')
-  const [channelFilter, setChannelFilter] = useState('all')
+    useState<ConnectionStatus>("checking");
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [caseUpdateError, setCaseUpdateError] = useState<string | null>(null);
+  const [updatingCaseId, setUpdatingCaseId] = useState<number | null>(null);
+  const [transactionSearch, setTransactionSearch] = useState("");
+  const [riskBandFilter, setRiskBandFilter] = useState("all");
+  const [channelFilter, setChannelFilter] = useState("all");
 
   async function loadDashboardData(showLoading = true) {
     // Keep the loading indicator visible long enough to be noticed, even when
     // the local API responds very quickly.
-    const loadingStartedAt = Date.now()
-    const minimumLoadingDurationMs = 500
+    const loadingStartedAt = Date.now();
+    const minimumLoadingDurationMs = 500;
 
     if (showLoading) {
-      setIsLoading(true)
-      setApiError(null)
+      setIsLoading(true);
+      setApiError(null);
     }
 
     try {
@@ -113,15 +113,15 @@ function App() {
         assessmentsResponse,
         casesResponse,
       ] = await Promise.all([
-        fetch('/api/health'),
-        fetch('/api/transactions?limit=1000'),
-        fetch('/api/assessments?limit=1000'),
+        fetch("/api/health"),
+        fetch("/api/transactions?limit=1000"),
+        fetch("/api/assessments?limit=1000"),
         // No status filter: load open, in-review, and closed cases.
-        fetch('/api/cases?limit=1000'),
-      ])
+        fetch("/api/cases?limit=1000"),
+      ]);
 
       if (!healthResponse.ok) {
-        throw new Error('Backend health check failed.')
+        throw new Error("Backend health check failed.");
       }
 
       if (
@@ -129,116 +129,120 @@ function App() {
         !assessmentsResponse.ok ||
         !casesResponse.ok
       ) {
-        throw new Error('Could not load all dashboard data.')
+        throw new Error("Could not load all dashboard data.");
       }
 
       const [transactions, assessments, cases] = await Promise.all([
         transactionsResponse.json() as Promise<Transaction[]>,
         assessmentsResponse.json() as Promise<Assessment[]>,
         casesResponse.json() as Promise<FraudCase[]>,
-      ])
+      ]);
 
-      setDashboardData({ transactions, assessments, cases })
-      setConnectionStatus('connected')
+      setDashboardData({ transactions, assessments, cases });
+      setConnectionStatus("connected");
     } catch (error) {
-      setConnectionStatus('disconnected')
+      setConnectionStatus("disconnected");
       setApiError(
         error instanceof Error
           ? error.message
-          : 'An unexpected error occurred.',
-      )
+          : "An unexpected error occurred.",
+      );
     } finally {
-      const elapsedMs = Date.now() - loadingStartedAt
-      const remainingLoadingMs = minimumLoadingDurationMs - elapsedMs
+      const elapsedMs = Date.now() - loadingStartedAt;
+      const remainingLoadingMs = minimumLoadingDurationMs - elapsedMs;
 
       if (remainingLoadingMs > 0) {
         await new Promise<void>((resolve) => {
-          window.setTimeout(resolve, remainingLoadingMs)
-        })
+          window.setTimeout(resolve, remainingLoadingMs);
+        });
       }
 
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
   useEffect(() => {
     // Start the initial request after the effect callback completes.
-    void Promise.resolve().then(() => loadDashboardData(false))
-  }, [])
+    void Promise.resolve().then(() => loadDashboardData(false));
+  }, []);
 
-  async function updateCaseStatus(
-    caseId: number,
-    newStatus: CaseStatus,
-  ) {
+  async function updateCaseStatus(caseId: number, newStatus: CaseStatus) {
     const currentCase = dashboardData.cases.find(
       (fraudCase) => fraudCase.case_id === caseId,
-    )
+    );
 
     if (!currentCase || currentCase.status === newStatus) {
-      return
+      return;
     }
 
-    setUpdatingCaseId(caseId)
-    setCaseUpdateError(null)
+    setUpdatingCaseId(caseId);
+    setCaseUpdateError(null);
 
     try {
       const response = await fetch(`/api/cases/${caseId}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ status: newStatus }),
-      })
+      });
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(
-          errorText || `Could not update case #${caseId}.`,
-        )
+        const errorText = await response.text();
+        throw new Error(errorText || `Could not update case #${caseId}.`);
       }
 
       // Reload from the API so the displayed status reflects saved data.
-      await loadDashboardData()
+      await loadDashboardData();
     } catch (error) {
       setCaseUpdateError(
         error instanceof Error
           ? error.message
-          : 'An unexpected error occurred while updating the case.',
-      )
+          : "An unexpected error occurred while updating the case.",
+      );
     } finally {
-      setUpdatingCaseId(null)
+      setUpdatingCaseId(null);
     }
   }
 
   const openCaseCount = dashboardData.cases.filter(
-    (fraudCase) => fraudCase.status === 'open',
-  ).length
+    (fraudCase) => fraudCase.status === "open",
+  ).length;
 
-  const normalizedTransactionSearch = transactionSearch.trim().toLowerCase()
-  const filteredTransactions = dashboardData.transactions.filter((transaction) => {
-    const assessment = dashboardData.assessments.find(
-      (item) => item.transaction_id === transaction.transaction_id,
-    )
-    const riskBand = assessment?.risk_band.toLowerCase() ?? 'unassessed'
-    const matchesSearch =
-      normalizedTransactionSearch.length === 0 ||
-      [transaction.transaction_id, transaction.customer_id, transaction.merchant_category]
-        .some((value) => value.toLowerCase().includes(normalizedTransactionSearch))
-    const matchesRiskBand = riskBandFilter === 'all' || riskBand === riskBandFilter
-    const matchesChannel = channelFilter === 'all' || transaction.channel === channelFilter
+  const normalizedTransactionSearch = transactionSearch.trim().toLowerCase();
+  const filteredTransactions = dashboardData.transactions.filter(
+    (transaction) => {
+      const assessment = dashboardData.assessments.find(
+        (item) => item.transaction_id === transaction.transaction_id,
+      );
+      const riskBand = assessment?.risk_band.toLowerCase() ?? "unassessed";
+      const matchesSearch =
+        normalizedTransactionSearch.length === 0 ||
+        [
+          transaction.transaction_id,
+          transaction.customer_id,
+          transaction.merchant_category,
+        ].some((value) =>
+          value.toLowerCase().includes(normalizedTransactionSearch),
+        );
+      const matchesRiskBand =
+        riskBandFilter === "all" || riskBand === riskBandFilter;
+      const matchesChannel =
+        channelFilter === "all" || transaction.channel === channelFilter;
 
-    return matchesSearch && matchesRiskBand && matchesChannel
-  })
+      return matchesSearch && matchesRiskBand && matchesChannel;
+    },
+  );
 
   const hasActiveTransactionFilters =
     transactionSearch.trim().length > 0 ||
-    riskBandFilter !== 'all' ||
-    channelFilter !== 'all'
+    riskBandFilter !== "all" ||
+    channelFilter !== "all";
 
   function clearTransactionFilters() {
-    setTransactionSearch('')
-    setRiskBandFilter('all')
-    setChannelFilter('all')
+    setTransactionSearch("");
+    setRiskBandFilter("all");
+    setChannelFilter("all");
   }
 
   return (
@@ -260,11 +264,11 @@ function App() {
         <nav className="navigation" aria-label="Main navigation">
           {navigationItems.map((item) => (
             <button
-              className={`nav-item ${activePage === item.label ? 'active' : ''}`}
+              className={`nav-item ${activePage === item.label ? "active" : ""}`}
               key={item.label}
               type="button"
               onClick={() => setActivePage(item.label)}
-              aria-current={activePage === item.label ? 'page' : undefined}
+              aria-current={activePage === item.label ? "page" : undefined}
             >
               <span className="nav-icon" aria-hidden="true">
                 {item.icon}
@@ -286,11 +290,11 @@ function App() {
             <p className="status-title">Rule engine</p>
 
             <p className="status-description">
-              {connectionStatus === 'checking'
-                ? 'Checking backend connection...'
-                : connectionStatus === 'connected'
-                  ? 'Backend connected'
-                  : 'Backend disconnected'}
+              {connectionStatus === "checking"
+                ? "Checking backend connection..."
+                : connectionStatus === "connected"
+                  ? "Backend connected"
+                  : "Backend disconnected"}
             </p>
           </div>
         </div>
@@ -320,13 +324,13 @@ function App() {
               <h1>{activePage}</h1>
 
               <p className="page-description">
-                {activePage === 'Overview'
-                  ? 'Monitor transaction risk and investigate suspicious activity.'
-                  : activePage === 'Transactions'
-                    ? 'Browse transactions and review their assessment results.'
-                    : activePage === 'Assessments'
-                      ? 'Inspect risk scores and understand which rules were triggered.'
-                      : 'Review and manage cases requiring investigation.'}
+                {activePage === "Overview"
+                  ? "Monitor transaction risk and investigate suspicious activity."
+                  : activePage === "Transactions"
+                    ? "Browse transactions and review their assessment results."
+                    : activePage === "Assessments"
+                      ? "Inspect risk scores and understand which rules were triggered."
+                      : "Review and manage cases requiring investigation."}
               </p>
             </div>
 
@@ -337,13 +341,17 @@ function App() {
           </div>
 
           {isLoading && (
-            <div className="dashboard-loading-banner" role="status" aria-live="polite">
+            <div
+              className="dashboard-loading-banner"
+              role="status"
+              aria-live="polite"
+            >
               <span className="dashboard-loading-spinner" aria-hidden="true" />
               <span>Loading dashboard data from the backend…</span>
             </div>
           )}
 
-          {activePage === 'Overview' ? (
+          {activePage === "Overview" ? (
             <>
               <section className="metrics-grid" aria-label="Dashboard metrics">
                 <article className="metric-card">
@@ -353,7 +361,7 @@ function App() {
                   </div>
 
                   <p className="metric-value">
-                    {isLoading ? '…' : dashboardData.transactions.length}
+                    {isLoading ? "…" : dashboardData.transactions.length}
                   </p>
 
                   <p className="metric-note">Records returned by API</p>
@@ -367,10 +375,10 @@ function App() {
 
                   <p className="metric-value">
                     {isLoading
-                      ? '…'
+                      ? "…"
                       : dashboardData.assessments.filter(
                           (assessment) =>
-                            assessment.risk_band.toLowerCase() === 'high',
+                            assessment.risk_band.toLowerCase() === "high",
                         ).length}
                   </p>
 
@@ -384,7 +392,7 @@ function App() {
                   </div>
 
                   <p className="metric-value">
-                    {isLoading ? '…' : dashboardData.assessments.length}
+                    {isLoading ? "…" : dashboardData.assessments.length}
                   </p>
 
                   <p className="metric-note">Assessments returned by API</p>
@@ -397,7 +405,7 @@ function App() {
                   </div>
 
                   <p className="metric-value">
-                    {isLoading ? '…' : openCaseCount}
+                    {isLoading ? "…" : openCaseCount}
                   </p>
 
                   <p className="metric-note">Cases awaiting review</p>
@@ -418,11 +426,11 @@ function App() {
                   </div>
 
                   <span className="panel-tag">
-                    {connectionStatus === 'connected'
-                      ? 'API CONNECTED'
-                      : connectionStatus === 'checking'
-                        ? 'CONNECTING'
-                        : 'API DISCONNECTED'}
+                    {connectionStatus === "connected"
+                      ? "API CONNECTED"
+                      : connectionStatus === "checking"
+                        ? "CONNECTING"
+                        : "API DISCONNECTED"}
                   </span>
                 </div>
 
@@ -432,11 +440,11 @@ function App() {
                   </div>
 
                   <h3>
-                    {connectionStatus === 'connected'
-                      ? 'Your dashboard is connected'
-                      : connectionStatus === 'checking'
-                        ? 'Connecting to your dashboard'
-                        : 'Backend connection unavailable'}
+                    {connectionStatus === "connected"
+                      ? "Your dashboard is connected"
+                      : connectionStatus === "checking"
+                        ? "Connecting to your dashboard"
+                        : "Backend connection unavailable"}
                   </h3>
 
                   <p>
@@ -448,7 +456,6 @@ function App() {
                     <span className="setup-note-icon" aria-hidden="true">
                       i
                     </span>
-
                     The current dataset contains synthetic demonstration
                     records. Risk scores are rule-based weights, not calibrated
                     fraud probabilities.
@@ -456,7 +463,7 @@ function App() {
                 </div>
               </section>
             </>
-          ) : activePage === 'Transactions' ? (
+          ) : activePage === "Transactions" ? (
             <section className="content-panel">
               <div className="panel-heading">
                 <div>
@@ -466,18 +473,23 @@ function App() {
 
                 <span className="panel-tag">
                   {isLoading
-                    ? 'LOADING'
+                    ? "LOADING"
                     : `${filteredTransactions.length} OF ${dashboardData.transactions.length} RECORDS`}
                 </span>
               </div>
 
-              <div className="transaction-filters" aria-label="Filter transactions">
+              <div
+                className="transaction-filters"
+                aria-label="Filter transactions"
+              >
                 <label className="transaction-filter-field">
                   <span>Search</span>
                   <input
                     type="search"
                     value={transactionSearch}
-                    onChange={(event) => setTransactionSearch(event.target.value)}
+                    onChange={(event) =>
+                      setTransactionSearch(event.target.value)
+                    }
                     placeholder="Transaction, customer, or merchant"
                     aria-label="Search transactions"
                   />
@@ -570,14 +582,14 @@ function App() {
                         const assessment = dashboardData.assessments.find(
                           (item) =>
                             item.transaction_id === transaction.transaction_id,
-                        )
+                        );
 
                         return (
                           <tr key={transaction.transaction_id}>
                             <td>{transaction.transaction_id}</td>
                             <td>{transaction.customer_id}</td>
                             <td>
-                              {transaction.currency}{' '}
+                              {transaction.currency}{" "}
                               {Number(transaction.amount).toLocaleString()}
                             </td>
                             <td>
@@ -593,24 +605,24 @@ function App() {
                                 </span>
                               )}
                             </td>
-                            <td>{assessment ? assessment.risk_score : '—'}</td>
+                            <td>{assessment ? assessment.risk_score : "—"}</td>
                             <td>{transaction.merchant_category}</td>
                             <td>
                               <span className="channel-badge">
                                 {transaction.channel}
                               </span>
                             </td>
-                            <td>{transaction.country_code ?? '—'}</td>
+                            <td>{transaction.country_code ?? "—"}</td>
                             <td>{formatDate(transaction.timestamp)}</td>
                           </tr>
-                        )
+                        );
                       })}
                     </tbody>
                   </table>
                 </div>
               )}
             </section>
-          ) : activePage === 'Assessments' ? (
+          ) : activePage === "Assessments" ? (
             <section className="content-panel">
               <div className="panel-heading">
                 <div>
@@ -623,7 +635,7 @@ function App() {
 
                 <span className="panel-tag">
                   {isLoading
-                    ? 'LOADING'
+                    ? "LOADING"
                     : `${dashboardData.assessments.length} RECORDS`}
                 </span>
               </div>
@@ -691,9 +703,9 @@ function App() {
                                   <strong>{rule.name}</strong>
 
                                   <span
-                                    className={`rule-status status-${rule.status.replace(/_/g, '-')}`}
+                                    className={`rule-status status-${rule.status.replace(/_/g, "-")}`}
                                   >
-                                    {rule.status.replace(/_/g, ' ')}
+                                    {rule.status.replace(/_/g, " ")}
                                   </span>
                                 </div>
 
@@ -725,7 +737,7 @@ function App() {
 
                 <span className="panel-tag">
                   {isLoading
-                    ? 'LOADING'
+                    ? "LOADING"
                     : `${openCaseCount} OPEN · ${dashboardData.cases.length} TOTAL`}
                 </span>
               </div>
@@ -752,15 +764,11 @@ function App() {
                 <div className="case-list">
                   {dashboardData.cases.map((fraudCase) => {
                     const assessment = dashboardData.assessments.find(
-                      (item) =>
-                        item.assessment_id === fraudCase.assessment_id,
-                    )
+                      (item) => item.assessment_id === fraudCase.assessment_id,
+                    );
 
                     return (
-                      <article
-                        className="case-item"
-                        key={fraudCase.case_id}
-                      >
+                      <article className="case-item" key={fraudCase.case_id}>
                         <div className="case-heading">
                           <div>
                             <h3>Case #{fraudCase.case_id}</h3>
@@ -774,7 +782,7 @@ function App() {
                               Status for case #{fraudCase.case_id}
                             </span>
                             <select
-                              className={`case-status-select status-${fraudCase.status.replace(/_/g, '-')}`}
+                              className={`case-status-select status-${fraudCase.status.replace(/_/g, "-")}`}
                               value={fraudCase.status}
                               disabled={updatingCaseId === fraudCase.case_id}
                               onChange={(event) =>
@@ -792,22 +800,21 @@ function App() {
                         </div>
 
                         <div className="case-meta">
-                          <span>
-                            Assessment: #{fraudCase.assessment_id}
-                          </span>
+                          <span>Assessment: #{fraudCase.assessment_id}</span>
 
                           {assessment && (
                             <span
                               className={`risk-badge risk-${assessment.risk_band.toLowerCase()}`}
                             >
-                              {formatRiskBand(assessment.risk_band)} risk · Score{' '}
-                              {assessment.risk_score}
+                              {formatRiskBand(assessment.risk_band)} risk ·
+                              Score {assessment.risk_score}
                             </span>
                           )}
                         </div>
 
                         <p className="case-notes">
-                          {fraudCase.notes || 'No investigation notes provided.'}
+                          {fraudCase.notes ||
+                            "No investigation notes provided."}
                         </p>
 
                         <div className="case-timestamps">
@@ -826,7 +833,7 @@ function App() {
                           </p>
                         )}
                       </article>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -834,13 +841,13 @@ function App() {
           )}
 
           <footer className="page-footer">
-            <span>Rule-Based Fraud Detector</span>
-            <span>Milestone 5 · Frontend foundation</span>
+            <span>© {new Date().getFullYear()} Rule-Based Fraud Detector</span>
+            <span>Intelligent fraud detection. Explainable decisions.</span>
           </footer>
         </main>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

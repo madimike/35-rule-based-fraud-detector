@@ -1,5 +1,8 @@
+
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from threading import Barrier
 
 import pytest
 
@@ -14,7 +17,15 @@ def repo(tmp_path):
     return PersistenceRepository(Database(tmp_path / "test.sqlite3"))
 
 
-def transaction(transaction_id="tx-1", customer_id="customer-1", *, minute=0, amount="125.00", device="device-a", country="NG"):
+def transaction(
+    transaction_id="tx-1",
+    customer_id="customer-1",
+    *,
+    minute=0,
+    amount="125.00",
+    device="device-a",
+    country="NG",
+):
     return Transaction(
         transaction_id=transaction_id,
         customer_id=customer_id,
@@ -43,6 +54,25 @@ def test_identical_duplicate_is_idempotent(repo):
     assert len(repo.list_transactions()) == 1
 
 
+def test_concurrent_identical_transactions_are_idempotent(repo):
+    item = transaction()
+    barrier = Barrier(2)
+
+    def save_transaction():
+        barrier.wait()
+        return repo.save_transaction(item)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(save_transaction),
+            executor.submit(save_transaction),
+        ]
+        results = [future.result() for future in futures]
+
+    assert sorted(results) == [False, True]
+    assert len(repo.list_transactions()) == 1
+
+
 def test_duplicate_id_with_different_payload_is_rejected(repo):
     repo.save_transaction(transaction())
     with pytest.raises(DuplicateTransactionError):
@@ -52,7 +82,9 @@ def test_duplicate_id_with_different_payload_is_rejected(repo):
 def test_history_is_customer_scoped_and_oldest_first(repo):
     repo.save_transaction(transaction("tx-2", minute=2))
     repo.save_transaction(transaction("tx-1", minute=0))
-    repo.save_transaction(transaction("tx-other", customer_id="customer-2", minute=1))
+    repo.save_transaction(
+        transaction("tx-other", customer_id="customer-2", minute=1)
+    )
     history = repo.get_customer_history("customer-1")
     assert [item.transaction_id for item in history] == ["tx-1", "tx-2"]
 
@@ -61,7 +93,10 @@ def test_history_excludes_equal_or_later_timestamps(repo):
     repo.save_transaction(transaction("tx-1", minute=0))
     repo.save_transaction(transaction("tx-2", minute=1))
     before = datetime(2026, 1, 1, 12, 1, tzinfo=timezone.utc)
-    assert [item.transaction_id for item in repo.get_customer_history("customer-1", before=before)] == ["tx-1"]
+    assert [
+        item.transaction_id
+        for item in repo.get_customer_history("customer-1", before=before)
+    ] == ["tx-1"]
 
 
 def test_list_transaction_limit_validation(repo):
@@ -70,7 +105,10 @@ def test_list_transaction_limit_validation(repo):
 
 
 def test_rule_config_is_persisted(repo):
-    config = RuleConfig(enabled_rules=frozenset({"high_amount", "velocity"}), velocity_max_transactions=4)
+    config = RuleConfig(
+        enabled_rules=frozenset({"high_amount", "velocity"}),
+        velocity_max_transactions=4,
+    )
     assert repo.save_rules(config) == 5
     rules = {rule["rule_id"]: rule for rule in repo.list_rules()}
     assert rules["high_amount"]["enabled"] is True
@@ -112,7 +150,11 @@ def test_cases_can_be_created_and_filtered(repo):
     repo.save_transaction(item)
     assessment = RuleEngine().evaluate(item)
     assessment_id = repo.save_assessment(assessment)
-    case_id = repo.create_case(item.transaction_id, assessment_id, "Review high-value activity")
+    case_id = repo.create_case(
+        item.transaction_id,
+        assessment_id,
+        "Review high-value activity",
+    )
     case = repo.get_case(case_id)
     assert case["status"] == "open"
     assert case["assessment_id"] == assessment_id
