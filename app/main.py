@@ -22,6 +22,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from uuid import uuid4
+from app.generators.synthetic import SyntheticTransactionGenerator
 from app.models.transaction import Transaction
 from app.persistence.database import Database
 from app.persistence.repository import (
@@ -44,6 +46,11 @@ class TransactionIngestResponse(BaseModel):
         description="False when this is an identical retry of an existing transaction"
     )
 
+class DemoBatchResponse(BaseModel):
+    generated_count: int
+    assessed_count: int
+    transactions: list[Transaction]
+    assessments: list[dict[str, Any]]
 
 class CaseCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -296,6 +303,60 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             )
 
         return transaction
+
+    @api.post(
+        "/transactions/demo/generate",
+        response_model=DemoBatchResponse,
+        tags=["transactions"],
+    )
+    def generate_demo_transactions() -> DemoBatchResponse:
+        transactions = build_demo_batch()
+
+        try:
+            # Save the complete batch before assessing it.
+            for transaction in transactions:
+                repository.save_transaction(transaction)
+
+            assessments = []
+            for transaction in transactions:
+                history = repository.get_customer_history(
+                    customer_id=transaction.customer_id,
+                    before=transaction.timestamp,
+                )
+                assessment = api.state.rule_engine.evaluate(
+                    transaction,
+                    history,
+                )
+                assessment_id = repository.save_assessment(assessment)
+
+                stored = repository.get_assessment(
+                    transaction.transaction_id
+                )
+                if stored is None:
+                    raise RuntimeError(
+                        "Assessment was saved but could not be retrieved"
+                    )
+
+                stored["assessment_id"] = assessment_id
+                stored["rule_results"] = [
+                    {**item, "score": int(item["score"])}
+                    for item in stored["rule_results"]
+                ]
+                assessments.append(stored)
+
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Demo batch generation failed: {exc}",
+            ) from exc
+
+        return DemoBatchResponse(
+            generated_count=len(transactions),
+            assessed_count=len(assessments),
+            transactions=transactions,
+            assessments=assessments,
+        )
+
 
     @api.post(
         "/transactions/{transaction_id}/evaluate",
@@ -584,6 +645,49 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             return FileResponse(frontend_index)
 
     return api
+
+def build_demo_batch() -> list[Transaction]:
+    """Build ten synthetic transactions with varied rule-detection patterns."""
+    generator = SyntheticTransactionGenerator()
+
+    scenarios = generator.all_scenarios()
+    normal = next(s for s in scenarios if s.label == "normal")
+    high_value = next(s for s in scenarios if s.label == "high_value")
+    velocity = next(s for s in scenarios if s.label == "rapid_successive")
+    unfamiliar = next(s for s in scenarios if s.label == "unfamiliar_device")
+    geography = next(s for s in scenarios if s.label == "unusual_geography")
+
+    # 2 normal + 1 high-value + 3 rapid + 2 unfamiliar-device
+    # + 2 geographic-change transactions = 10.
+
+    selected = (
+        list(high_value.transactions)
+        + list(velocity.transactions)
+        + list(unfamiliar.transactions)
+        + list(geography.transactions)
+        + [normal.transactions[0]]
+    )
+
+
+    now = datetime.now(timezone.utc)
+    shift = now - generator.BASE_TIME
+    batch_id = uuid4().hex[:12]
+
+    transactions = [
+        transaction.model_copy(
+            update={
+                "transaction_id": f"demo-{batch_id}-{index:02d}",
+                "timestamp": transaction.timestamp + shift,
+                "created_at": transaction.created_at + shift,
+            }
+        )
+        for index, transaction in enumerate(selected, start=1)
+    ]
+
+    return sorted(
+        transactions,
+        key=lambda item: (item.timestamp, item.transaction_id),
+    )
 
 
 app = create_app()

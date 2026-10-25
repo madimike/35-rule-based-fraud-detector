@@ -248,6 +248,70 @@ def test_evaluate_transaction_and_retrieve_assessment(tmp_path):
     assert fetched.status_code == 200
 
 
+def test_generate_demo_batch_creates_ten_assessed_transactions(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.post("/transactions/demo/generate")
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["generated_count"] == 10
+    assert body["assessed_count"] == 10
+
+    transactions = body["transactions"]
+    assessments = body["assessments"]
+
+    assert len(transactions) == 10
+    assert len(assessments) == 10
+
+    transaction_ids = [item["transaction_id"] for item in transactions]
+    assessment_ids = [item["transaction_id"] for item in assessments]
+
+    assert len(set(transaction_ids)) == 10
+    assert set(transaction_ids) == set(assessment_ids)
+
+    # Verify the batch was persisted and is retrievable through the existing API.
+    stored_transactions = client.get("/transactions?limit=1000")
+    stored_assessments = client.get("/assessments?limit=1000")
+
+    assert stored_transactions.status_code == 200
+    assert stored_assessments.status_code == 200
+    assert set(
+        item["transaction_id"] for item in stored_transactions.json()
+    ).issuperset(transaction_ids)
+    assert set(
+        item["transaction_id"] for item in stored_assessments.json()
+    ).issuperset(transaction_ids)
+
+    # Scores must come from the real rule engine, not fabricated values.
+    for assessment in assessments:
+        assert 0 <= assessment["risk_score"] <= 100
+        assert assessment["risk_band"] in {"low", "medium", "high"}
+        assert isinstance(assessment["rule_results"], list)
+        assert len(assessment["rule_results"]) == 5
+
+
+def test_demo_batch_triggers_real_fraud_rules(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.post("/transactions/demo/generate")
+
+    assert response.status_code == 200
+    assessments = response.json()["assessments"]
+
+    triggered_rules = {
+        rule["rule_id"]
+        for assessment in assessments
+        for rule in assessment["rule_results"]
+        if rule["status"] == "triggered"
+    }
+
+    assert "high_amount" in triggered_rules
+    assert "velocity" in triggered_rules
+    assert "unfamiliar_device" in triggered_rules
+    assert "unusual_geography" in triggered_rules
+
 def test_evaluation_of_missing_transaction_returns_404(tmp_path):
     client = make_client(tmp_path)
 

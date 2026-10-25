@@ -1,4 +1,3 @@
-
 import { useEffect, useState, type FormEvent } from "react";
 import "./App.css";
 
@@ -90,7 +89,6 @@ function createInitialTransactionForm(): TransactionForm {
   };
 }
 
-
 const emptyDashboardData: DashboardData = {
   transactions: [],
   assessments: [],
@@ -128,19 +126,25 @@ function App() {
   const [riskBandFilter, setRiskBandFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
   const [showTransactionForm, setShowTransactionForm] = useState(false);
-  const [transactionForm, setTransactionForm] =
-    useState<TransactionForm>(createInitialTransactionForm);
-  const [transactionActionError, setTransactionActionError] =
-    useState<string | null>(null);
-  const [transactionActionMessage, setTransactionActionMessage] =
-    useState<string | null>(null);
+  const [transactionForm, setTransactionForm] = useState<TransactionForm>(
+    createInitialTransactionForm,
+  );
+  const [transactionActionError, setTransactionActionError] = useState<
+    string | null
+  >(null);
+  const [transactionActionMessage, setTransactionActionMessage] = useState<
+    string | null
+  >(null);
   const [savingTransaction, setSavingTransaction] = useState(false);
-  const [evaluatingTransactionId, setEvaluatingTransactionId] =
-    useState<string | null>(null);
+  const [generatingDemoBatch, setGeneratingDemoBatch] = useState(false);
+  const [evaluatingTransactionId, setEvaluatingTransactionId] = useState<
+    string | null
+  >(null);
   const [creatingCaseForTransactionId, setCreatingCaseForTransactionId] =
     useState<string | null>(null);
-  const [caseNotesDrafts, setCaseNotesDrafts] =
-    useState<Record<number, string>>({});
+  const [caseNotesDrafts, setCaseNotesDrafts] = useState<
+    Record<number, string>
+  >({});
   const [savingCaseNotesId, setSavingCaseNotesId] = useState<number | null>(
     null,
   );
@@ -311,10 +315,45 @@ function App() {
       );
     } catch (error) {
       setTransactionActionError(
-        error instanceof Error ? error.message : "Could not save the transaction.",
+        error instanceof Error
+          ? error.message
+          : "Could not save the transaction.",
       );
     } finally {
       setSavingTransaction(false);
+    }
+  }
+
+  async function generateDemoTransactions() {
+    setGeneratingDemoBatch(true);
+    setTransactionActionError(null);
+    setTransactionActionMessage(null);
+
+    try {
+      const response = await fetch("/transactions/demo/generate", {
+        method: "POST",
+      });
+
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body.detail ?? "Failed to generate demo transactions.");
+      }
+
+      await loadDashboardData();
+
+      setTransactionActionMessage(
+        `Generated and assessed ${body.generated_count} demo transactions successfully.`,
+      );
+      setShowTransactionForm(false);
+    } catch (error) {
+      setTransactionActionError(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while generating demo transactions.",
+      );
+    } finally {
+      setGeneratingDemoBatch(false);
     }
   }
 
@@ -373,13 +412,13 @@ function App() {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(errorBody || `Case creation failed (${response.status}).`);
+        throw new Error(
+          errorBody || `Case creation failed (${response.status}).`,
+        );
       }
 
       await loadDashboardData();
-      setCaseActionMessage(
-        `Investigation case created for ${transactionId}.`,
-      );
+      setCaseActionMessage(`Investigation case created for ${transactionId}.`);
       setActivePage("Cases");
     } catch (error) {
       setTransactionActionError(
@@ -410,7 +449,9 @@ function App() {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(errorBody || `Could not update notes for case #${caseId}.`);
+        throw new Error(
+          errorBody || `Could not update notes for case #${caseId}.`,
+        );
       }
 
       await loadDashboardData();
@@ -706,6 +747,18 @@ function App() {
                 <button
                   className="primary-button"
                   type="button"
+                  onClick={generateDemoTransactions}
+                  disabled={generatingDemoBatch || savingTransaction}
+                >
+                  {generatingDemoBatch
+                    ? "Generating demo transactions..."
+                    : "Generate 10 demo transactions"}
+                </button>
+
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={generatingDemoBatch || savingTransaction}
                   onClick={() => {
                     setShowTransactionForm((visible) => !visible);
                     setTransactionActionError(null);
@@ -842,7 +895,8 @@ function App() {
                         onChange={(event) =>
                           setTransactionForm((current) => ({
                             ...current,
-                            channel: event.target.value as TransactionForm["channel"],
+                            channel: event.target
+                              .value as TransactionForm["channel"],
                           }))
                         }
                       >
@@ -1049,24 +1103,31 @@ function App() {
                                   className="secondary-button compact-button"
                                   type="button"
                                   disabled={
-                                    evaluatingTransactionId === transaction.transaction_id
+                                    evaluatingTransactionId ===
+                                    transaction.transaction_id
                                   }
                                   onClick={() =>
-                                    void evaluateTransaction(transaction.transaction_id)
+                                    void evaluateTransaction(
+                                      transaction.transaction_id,
+                                    )
                                   }
                                 >
-                                  {evaluatingTransactionId === transaction.transaction_id
+                                  {evaluatingTransactionId ===
+                                  transaction.transaction_id
                                     ? "Evaluating..."
                                     : assessment
                                       ? "Re-evaluate"
                                       : "Evaluate"}
                                 </button>
-                                {assessment && (
-                                  dashboardData.cases.some(
+                                {assessment &&
+                                  (dashboardData.cases.some(
                                     (item) =>
-                                      item.transaction_id === transaction.transaction_id,
+                                      item.transaction_id ===
+                                      transaction.transaction_id,
                                   ) ? (
-                                    <span className="existing-case-label">Case exists</span>
+                                    <span className="existing-case-label">
+                                      Case exists
+                                    </span>
                                   ) : (
                                     <button
                                       className="primary-button compact-button"
@@ -1086,8 +1147,7 @@ function App() {
                                         ? "Creating..."
                                         : "Create case"}
                                     </button>
-                                  )
-                                )}
+                                  ))}
                               </div>
                             </td>
                           </tr>
@@ -1320,7 +1380,9 @@ function App() {
                               (caseNotesDrafts[fraudCase.case_id] ??
                                 fraudCase.notes) === fraudCase.notes
                             }
-                            onClick={() => void saveCaseNotes(fraudCase.case_id)}
+                            onClick={() =>
+                              void saveCaseNotes(fraudCase.case_id)
+                            }
                           >
                             {savingCaseNotesId === fraudCase.case_id
                               ? "Saving notes..."
